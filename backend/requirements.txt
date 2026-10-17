@@ -4,3 +4,4 @@ sqlmodel
 asyncpg
 alembic
 python-dotenv
+requests
