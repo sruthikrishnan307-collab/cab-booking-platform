@@ -29,3 +29,22 @@ Thumbs.db
 
 # Local database
 *.db
+
+# Python
+__pycache__/
+*.py[cod]
+backend/env/
+backend/venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Local databases
+*.db

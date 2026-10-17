@@ -7,6 +7,7 @@ from uuid import uuid4
 import sqlite3
 import math
 import requests
+GEOCODING_CACHE = {}
 
 
 # ==========================================
@@ -499,46 +500,74 @@ def get_nearby_places(
     # STEP 1: GEOCODE THE DESTINATION
     # --------------------------------------
 
-    try:
-        geo_response = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": destination,
-                "format": "jsonv2",
-                "limit": 5,
-                "countrycodes": "in",
-                "addressdetails": 1
-            },
-            headers=headers,
-            timeout=20
-        )
+        # --------------------------------------
+    # STEP 1: GEOCODE THE DESTINATION
+    # --------------------------------------
 
-        geo_response.raise_for_status()
-        geo_data = geo_response.json()
-        print(f"Destination entered: {destination}")
-        print("Nominatim results:")
+    cache_key = destination.casefold().strip()
 
-        for place in geo_data:
-            print(
-                place.get("display_name"),
-                place.get("address", {})
+    if cache_key in GEOCODING_CACHE:
+        geo_data = GEOCODING_CACHE[cache_key]
+        print("Using cached geocoding result:", destination)
+
+    else:
+        try:
+            geo_response = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={
+                    "q": destination,
+                    "format": "jsonv2",
+                    "limit": 5,
+                    "countrycodes": "in",
+                    "addressdetails": 1
+                },
+                headers=headers,
+                timeout=20
             )
 
-    except (requests.RequestException, ValueError) as e:
-        print("========== GEOCODING ERROR ==========")
-        print("Destination:", destination)
-        print("Error type:", type(e).__name__)
-        print("Error:", repr(e))
-        print("====================================")
-        raise HTTPException(
-            status_code=502,
-            detail="Unable to search for the destination. Please try again."
-        )
+            geo_response.raise_for_status()
+            geo_data = geo_response.json()
+
+            if not isinstance(geo_data, list):
+                raise ValueError(
+                    "Unexpected response from geocoding service."
+                )
+
+            # Cache only successful, non-empty results.
+            if geo_data:
+                GEOCODING_CACHE[cache_key] = geo_data
+
+            print("Destination entered:", destination)
+            print("Nominatim results:")
+
+            for place in geo_data:
+                print(
+                    place.get("display_name"),
+                    place.get("address", {})
+                )
+
+        except (requests.RequestException, ValueError) as e:
+            print("========== GEOCODING ERROR ==========")
+            print("Destination:", destination)
+            print("Error type:", type(e).__name__)
+            print("Error:", repr(e))
+            print("====================================")
+
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to search for the destination. "
+                    "Please try again later."
+                )
+            )
 
     if not geo_data:
         raise HTTPException(
             status_code=404,
-            detail="Destination not found. Please enter a valid location."
+            detail=(
+                "Destination not found. "
+                "Please enter a valid location."
+            )
         )
 
       # Select the most relevant destination returned by Nominatim.
