@@ -23,7 +23,6 @@ DATABASE_NAME = "krishcab.db"
 # CORS CONFIGURATION
 # ==========================================
 
-a
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
