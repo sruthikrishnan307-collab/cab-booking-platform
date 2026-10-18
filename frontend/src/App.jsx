@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 
-const API_URL = "https://cab-booking-platform-xp7l.onrender.com"; // Replace with your backend API URL
+const API_URL = "https://cab-booking-platform-xp7l.onrender.com";
 
 function App() {
   // Form states
@@ -16,17 +16,13 @@ function App() {
   const [fare, setFare] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [tracking, setTracking] = useState(null);
-  const [nearbyPlaces, setNearbyPlaces] = useState([]);
-
-  // Nearby Places filters
-  const [nearbyCategory, setNearbyCategory] = useState("all");
-  const [nearbyRadius, setNearbyRadius] = useState("5");
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
 
   // Loading states
   const [loadingFare, setLoadingFare] = useState(false);
   const [loadingBooking, setLoadingBooking] = useState(false);
   const [loadingBookings, setLoadingBookings] = useState(true);
-  const [loadingNearbyPlaces, setLoadingNearbyPlaces] = useState(false);
 
   // Messages
   const [error, setError] = useState("");
@@ -53,9 +49,7 @@ function App() {
       const detail = data.detail ?? data.message ?? data.error;
       let errorMessage = "Something went wrong.";
 
-      if (typeof detail === "string") {
-        errorMessage = detail;
-      } else if (Array.isArray(detail)) {
+      if (Array.isArray(detail)) {
         errorMessage = detail
           .map((item) => {
             if (typeof item === "string") return item;
@@ -71,6 +65,8 @@ function App() {
           .join("; ");
       } else if (detail && typeof detail === "object") {
         errorMessage = JSON.stringify(detail);
+      } else if (detail) {
+        errorMessage = String(detail);
       }
 
       throw new Error(errorMessage);
@@ -88,57 +84,16 @@ function App() {
 
     try {
       const data = await apiRequest("/api/bookings");
-      setBookings(Array.isArray(data) ? data : data.bookings || []);
+
+      setBookings(
+        Array.isArray(data) ? data : data.bookings || []
+      );
     } catch (err) {
       setError(`Could not load bookings: ${err.message}`);
     } finally {
       setLoadingBookings(false);
     }
   }, [apiRequest]);
-
-  // --------------------------------------------------
-  // LOAD NEARBY PLACES
-  // --------------------------------------------------
-
-  const loadNearbyPlaces = useCallback(async () => {
-    const destination = drop.trim() || pickup.trim();
-
-    if (!destination) {
-      setError("Please enter a pickup or drop location first.");
-      return;
-    }
-
-    setLoadingNearbyPlaces(true);
-    setError("");
-
-    try {
-      const params = new URLSearchParams({
-        destination,
-        radius_km: nearbyRadius,
-        category: nearbyCategory,
-      });
-
-      const data = await apiRequest(
-        `/api/nearby-places?${params.toString()}`
-      );
-
-      setNearbyPlaces(
-        Array.isArray(data) ? data : data.places || []
-      );
-
-      setMessage(
-        `Nearby places loaded: ${
-          Array.isArray(data) ? data.length : data.total_places ?? 0
-        } found.`
-      );
-    } catch (err) {
-      console.error("Could not load nearby places:", err.message);
-      setNearbyPlaces([]);
-      setError(`Could not load nearby places: ${err.message}`);
-    } finally {
-      setLoadingNearbyPlaces(false);
-    }
-  }, [apiRequest, drop, pickup, nearbyCategory, nearbyRadius]);
 
   // --------------------------------------------------
   // INITIAL DATA LOADING
@@ -164,7 +119,10 @@ function App() {
       return;
     }
 
-    if (pickup.trim().toLowerCase() === drop.trim().toLowerCase()) {
+    if (
+      pickup.trim().toLowerCase() ===
+      drop.trim().toLowerCase()
+    ) {
       setError("Pickup and drop locations must be different.");
       return;
     }
@@ -195,9 +153,7 @@ function App() {
       setFare(data);
       setMessage("Fare estimated successfully!");
     } catch (err) {
-      setError(
-        `Fare estimation failed: ${err.message}. Check that your backend is running on port 8000.`
-      );
+      setError(`Fare estimation failed: ${err.message}`);
     } finally {
       setLoadingFare(false);
     }
@@ -218,7 +174,10 @@ function App() {
       return;
     }
 
-    if (pickup.trim().toLowerCase() === drop.trim().toLowerCase()) {
+    if (
+      pickup.trim().toLowerCase() ===
+      drop.trim().toLowerCase()
+    ) {
       setError("Pickup and drop locations must be different.");
       return;
     }
@@ -253,7 +212,6 @@ function App() {
       setMessage("Your ride booking request was successful!");
 
       await loadBookings();
-      await loadNearbyPlaces();
     } catch (err) {
       setError(`Booking failed: ${err.message}`);
     } finally {
@@ -277,7 +235,10 @@ function App() {
   };
 
   const getFareAmount = (fareData) => {
-    if (typeof fareData === "number" || typeof fareData === "string") {
+    if (
+      typeof fareData === "number" ||
+      typeof fareData === "string"
+    ) {
       return fareData;
     }
 
@@ -342,13 +303,151 @@ function App() {
     setMessage("");
 
     try {
-      const data = await apiRequest(`/api/bookings/${bookingId}`);
+      const data = await apiRequest(
+        `/api/bookings/${bookingId}`
+      );
+
       setTracking(data);
       setMessage("Booking details loaded.");
     } catch (err) {
       setError(`Could not find booking: ${err.message}`);
     }
   };
+
+  // SEND SOS REQUEST
+  const sendSOS = async (booking) => {
+    const bookingId =
+      booking?.booking_id ??
+      booking?.id ??
+      booking?.bookingId;
+
+    if (!bookingId) {
+      setError("Cannot send SOS: booking ID is missing.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Send an SOS request for this booking? " +
+      "This records a request in Krish Cab but does NOT " +
+      "contact police or emergency services."
+    );
+
+    if (!confirmed) return;
+
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await apiRequest(
+        `/api/bookings/${encodeURIComponent(bookingId)}/sos`,
+        { method: "POST" }
+      );
+
+      setMessage(
+        `SOS request recorded. Reference: ${data.sos_id}. ` +
+        "No emergency services have been contacted."
+      );
+    } catch (err) {
+      setError(`SOS request failed: ${err.message}`);
+    }
+  };
+
+  // SHARE TRIP DETAILS
+  const shareTrip = async (booking) => {
+    const bookingId =
+      booking?.booking_id ??
+      booking?.id ??
+      booking?.bookingId ??
+      "Unavailable";
+
+    const pickupLocation =
+      booking?.pickup ??
+      booking?.pickup_location ??
+      "Unavailable";
+
+    const destination =
+      booking?.destination ??
+      booking?.drop ??
+      booking?.drop_location ??
+      "Unavailable";
+
+    const rideType =
+      booking?.ride_type ??
+      booking?.rideType ??
+      booking?.cab_type ??
+      booking?.vehicle_type ??
+      "Unavailable";
+
+    const status = booking?.status ?? "Unknown";
+
+    const tripDetails = [
+      "Krish Cab - Trip Details",
+      `Booking ID: ${bookingId}`,
+      `Pickup: ${pickupLocation}`,
+      `Destination: ${destination}`,
+      `Cab Type: ${rideType}`,
+      `Status: ${status}`,
+    ].join("\n");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "My Krish Cab Trip",
+          text: tripDetails,
+        });
+
+        setMessage("Trip details shared successfully.");
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(tripDetails);
+        setMessage("Trip details copied to clipboard.");
+      } else {
+        window.prompt("Copy your trip details:", tripDetails);
+      }
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        setError("Unable to share trip details. Please try again.");
+      }
+    }
+  };
+
+
+  // --------------------------------------------------
+  // SEARCH AND FILTER BOOKINGS
+  // --------------------------------------------------
+
+  const filteredBookings = bookings.filter((booking) => {
+    const bookingId = String(getBookingId(booking) ?? "");
+
+    const pickupLocation =
+      booking.pickup ?? booking.pickup_location ?? "";
+
+    const destination =
+      booking.drop ??
+      booking.drop_location ??
+      booking.destination ??
+      "";
+
+    const searchText = bookingSearch.trim().toLowerCase();
+
+    const matchesSearch =
+      bookingId.toLowerCase().includes(searchText) ||
+      String(pickupLocation).toLowerCase().includes(searchText) ||
+      String(destination).toLowerCase().includes(searchText);
+
+    const status = String(
+      booking.status ?? "Pending"
+    ).toLowerCase();
+
+    const matchesStatus =
+      statusFilter === "All" ||
+      (statusFilter === "Cancelled" &&
+        status.includes("cancel")) ||
+      (statusFilter === "Active" &&
+        !status.includes("cancel") &&
+        !status.includes("complete"));
+
+    return matchesSearch && matchesStatus;
+  });
 
   // --------------------------------------------------
   // USER INTERFACE
@@ -364,7 +463,6 @@ function App() {
           <a href="#home">Home</a>
           <a href="#book">Book a Cab</a>
           <a href="#bookings">My Bookings</a>
-          <a href="#nearby">Nearby Places</a>
         </nav>
       </header>
 
@@ -372,7 +470,9 @@ function App() {
         {/* HERO SECTION */}
         <section className="hero" id="home">
           <div className="hero-content">
-            <p className="eyebrow">YOUR JOURNEY, OUR PRIORITY</p>
+            <p className="eyebrow">
+              YOUR JOURNEY, OUR PRIORITY
+            </p>
 
             <h1>
               Your Ride.
@@ -435,7 +535,10 @@ function App() {
 
           <div className="booking-layout">
             {/* BOOKING FORM */}
-            <form className="booking-card" onSubmit={estimateFare}>
+            <form
+              className="booking-card"
+              onSubmit={estimateFare}
+            >
               <h3>Trip Details</h3>
 
               <div className="form-group">
@@ -445,7 +548,9 @@ function App() {
                   type="text"
                   placeholder="Enter pickup location"
                   value={pickup}
-                  onChange={(event) => setPickup(event.target.value)}
+                  onChange={(event) =>
+                    setPickup(event.target.value)
+                  }
                   required
                 />
               </div>
@@ -457,7 +562,9 @@ function App() {
                   type="text"
                   placeholder="Enter destination"
                   value={drop}
-                  onChange={(event) => setDrop(event.target.value)}
+                  onChange={(event) =>
+                    setDrop(event.target.value)
+                  }
                   required
                 />
               </div>
@@ -471,20 +578,26 @@ function App() {
                     min="0.1"
                     step="any"
                     value={distance}
-                    onChange={(event) => setDistance(event.target.value)}
+                    onChange={(event) =>
+                      setDistance(event.target.value)
+                    }
                     required
                   />
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="duration">Duration (minutes)</label>
+                  <label htmlFor="duration">
+                    Duration (minutes)
+                  </label>
                   <input
                     id="duration"
                     type="number"
                     min="1"
                     step="any"
                     value={duration}
-                    onChange={(event) => setDuration(event.target.value)}
+                    onChange={(event) =>
+                      setDuration(event.target.value)
+                    }
                     required
                   />
                 </div>
@@ -495,7 +608,9 @@ function App() {
                 <select
                   id="rideType"
                   value={rideType}
-                  onChange={(event) => setRideType(event.target.value)}
+                  onChange={(event) =>
+                    setRideType(event.target.value)
+                  }
                 >
                   <option value="Mini">Mini</option>
                   <option value="Sedan">Sedan</option>
@@ -508,7 +623,9 @@ function App() {
                 type="submit"
                 disabled={loadingFare}
               >
-                {loadingFare ? "Calculating Fare..." : "Estimate Fare"}
+                {loadingFare
+                  ? "Calculating Fare..."
+                  : "Estimate Fare"}
               </button>
 
               <button
@@ -541,18 +658,22 @@ function App() {
                       <span>Pickup</span>
                       <strong>{pickup || "Not entered"}</strong>
                     </div>
+
                     <div>
                       <span>Destination</span>
                       <strong>{drop || "Not entered"}</strong>
                     </div>
+
                     <div>
                       <span>Distance</span>
                       <strong>{distance} km</strong>
                     </div>
+
                     <div>
                       <span>Duration</span>
                       <strong>{duration} minutes</strong>
                     </div>
+
                     <div>
                       <span>Cab Type</span>
                       <strong>{rideType}</strong>
@@ -565,13 +686,15 @@ function App() {
                     onClick={bookRide}
                     disabled={loadingBooking}
                   >
-                    {loadingBooking ? "Booking..." : "Confirm Booking"}
+                    {loadingBooking
+                      ? "Booking..."
+                      : "Confirm Booking"}
                   </button>
                 </>
               ) : (
                 <p className="muted">
-                  Your estimated fare will appear here after you submit
-                  your trip details.
+                  Your estimated fare will appear here after you
+                  submit your trip details.
                 </p>
               )}
             </div>
@@ -589,13 +712,17 @@ function App() {
             <div className="tracking-card">
               <div>
                 <span>Booking ID</span>
-                <strong>{getBookingId(tracking) ?? "Not provided"}</strong>
+                <strong>
+                  {getBookingId(tracking) ?? "Not provided"}
+                </strong>
               </div>
 
               <div>
                 <span>Pickup</span>
                 <strong>
-                  {tracking.pickup ?? tracking.pickup_location ?? pickup}
+                  {tracking.pickup ??
+                    tracking.pickup_location ??
+                    pickup}
                 </strong>
               </div>
 
@@ -654,19 +781,48 @@ function App() {
           </div>
 
           <div className="bookings-card">
+            {/* SEARCH AND STATUS FILTERS */}
+            <div className="booking-filters">
+              <input
+                type="search"
+                placeholder="Search by booking ID or location..."
+                value={bookingSearch}
+                onChange={(event) =>
+                  setBookingSearch(event.target.value)
+                }
+                aria-label="Search bookings"
+              />
+
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value)
+                }
+                aria-label="Filter bookings by status"
+              >
+                <option value="All">All Bookings</option>
+                <option value="Active">Active Rides</option>
+                <option value="Cancelled">Cancelled Rides</option>
+              </select>
+            </div>
+
             {loadingBookings && bookings.length === 0 ? (
-              <p className="empty-state">Loading your bookings...</p>
+              <p className="empty-state">
+                Loading your bookings...
+              </p>
             ) : bookings.length === 0 ? (
               <p className="empty-state">
                 No bookings available yet. Book your first ride!
               </p>
             ) : (
               <div className="bookings-list">
-                {bookings.map((booking, index) => {
+                {filteredBookings.map((booking, index) => {
                   const bookingId = getBookingId(booking);
+
                   const status = String(
                     booking.status ?? "Pending"
                   ).toLowerCase();
+
                   const isCancelled = status.includes("cancel");
 
                   return (
@@ -686,7 +842,9 @@ function App() {
                             "Destination"}
                         </h3>
 
-                        <p>Booking ID: {bookingId ?? "Not provided"}</p>
+                        <p>
+                          Booking ID: {bookingId ?? "Not provided"}
+                        </p>
 
                         <p>
                           Cab Type:{" "}
@@ -724,7 +882,9 @@ function App() {
                           <button
                             type="button"
                             className="secondary-button"
-                            onClick={() => trackBooking(bookingId)}
+                            onClick={() =>
+                              trackBooking(bookingId)
+                            }
                           >
                             View Details
                           </button>
@@ -734,15 +894,41 @@ function App() {
                           <button
                             type="button"
                             className="danger-button"
-                            onClick={() => cancelBooking(bookingId)}
+                            onClick={() =>
+                              cancelBooking(bookingId)
+                            }
                           >
                             Cancel
                           </button>
                         )}
+
+                            <button
+                              type="button"
+                              className="danger-button"
+                              onClick={() => sendSOS(booking)}
+                            >
+                              🆘 SOS Emergency
+                            </button>
+
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => shareTrip(booking)}
+                        >
+                          📤 Share Trip
+                        </button>
+
                       </div>
                     </article>
                   );
                 })}
+
+                {/* NO SEARCH RESULTS */}
+                {filteredBookings.length === 0 && (
+                  <p className="empty-state">
+                    No bookings match your search or selected filter.
+                  </p>
+                )}
               </div>
             )}
 
@@ -752,115 +938,10 @@ function App() {
               onClick={loadBookings}
               disabled={loadingBookings}
             >
-              {loadingBookings ? "Refreshing..." : "Refresh Bookings"}
+              {loadingBookings
+                ? "Refreshing..."
+                : "Refresh Bookings"}
             </button>
-          </div>
-        </section>
-
-        {/* NEARBY PLACES */}
-        <section className="section" id="nearby">
-          <div className="section-heading">
-            <p className="eyebrow">EXPLORE AROUND YOU</p>
-            <h2>Nearby Places</h2>
-            <p>Choose a category and explore places near your destination.</p>
-          </div>
-
-          <div className="booking-card">
-            <div className="form-group">
-              <label htmlFor="nearbyCategory">Place Category</label>
-              <select
-                id="nearbyCategory"
-                value={nearbyCategory}
-                onChange={(event) => setNearbyCategory(event.target.value)}
-              >
-                <option value="all">All Places</option>
-                <option value="temples">Temples</option>
-                <option value="cafes">Cafes</option>
-                <option value="restaurants">Restaurants</option>
-                <option value="attractions">Attractions</option>
-                <option value="shopping">Shopping</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="nearbyRadius">Search Radius</label>
-              <select
-                id="nearbyRadius"
-                value={nearbyRadius}
-                onChange={(event) => setNearbyRadius(event.target.value)}
-              >
-                <option value="1">Within 1 km</option>
-                <option value="2">Within 2 km</option>
-                <option value="3">Within 3 km</option>
-                <option value="5">Within 5 km</option>
-                <option value="10">Within 10 km</option>
-              </select>
-            </div>
-
-            <button
-              type="button"
-              className="primary-button full-width"
-              onClick={loadNearbyPlaces}
-              disabled={
-                loadingNearbyPlaces || (!drop.trim() && !pickup.trim())
-              }
-            >
-              {loadingNearbyPlaces
-                ? "Searching..."
-                : "Search Nearby Places"}
-            </button>
-          </div>
-
-          <div className="places-grid">
-            {loadingNearbyPlaces ? (
-              <p className="empty-state">Searching for nearby places...</p>
-            ) : nearbyPlaces.length > 0 ? (
-              nearbyPlaces.map((place, index) => (
-                <article
-                  className="place-card"
-                  key={
-                    place.id ??
-                    `${place.name ?? place.place_name ?? "place"}-${index}`
-                  }
-                >
-                  <span className="place-icon">📍</span>
-
-                  <h3>
-                    {place.name ??
-                      place.place_name ??
-                      place.title ??
-                      `Place ${index + 1}`}
-                  </h3>
-
-                  <p>
-                    {place.category ??
-                      place.description ??
-                      place.address ??
-                      place.type ??
-                      "Nearby place"}
-                  </p>
-
-                  {place.distance_km != null && (
-                    <p>{place.distance_km} km away</p>
-                  )}
-
-                  {place.map_url && (
-                    <a
-                      href={place.map_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      View on map
-                    </a>
-                  )}
-                </article>
-              ))
-            ) : (
-              <div className="empty-state">
-                Nearby places will appear here after you enter a pickup or
-                destination and click Search Nearby Places.
-              </div>
-            )}
           </div>
         </section>
       </main>
