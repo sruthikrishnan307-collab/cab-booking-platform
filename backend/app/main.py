@@ -654,12 +654,17 @@ def get_nearby_places(
     # STEP 3: QUERY OVERPASS SERVERS
     # --------------------------------------
 
+    # --------------------------------------
+# STEP 3: QUERY OVERPASS SERVERS
+# --------------------------------------
+
     OVERPASS_URLS = [
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
     ]
 
     places_data = None
+    overpass_errors = []
 
     for server in OVERPASS_URLS:
 
@@ -671,6 +676,11 @@ def get_nearby_places(
                 data={"data": overpass_query},
                 headers=headers,
                 timeout=45
+            )
+
+            print(
+                f"Overpass status from {server}: "
+                f"{places_response.status_code}"
             )
 
             places_response.raise_for_status()
@@ -694,18 +704,43 @@ def get_nearby_places(
             break
 
         except requests.RequestException as e:
-            print(f"OVERPASS ERROR ({server}): {repr(e)}")
-            print(f"Error: {repr(e)}")
+
+            error_message = (
+                f"{server} -> "
+                f"{type(e).__name__}: {str(e)}"
+            )
+
+            print("OVERPASS REQUEST ERROR:")
+            print(error_message)
+
+            overpass_errors.append(error_message)
 
         except ValueError as e:
-            print(f"Overpass response error: {server}")
-            print(f"Error: {repr(e)}")
+
+            error_message = (
+                f"{server} -> "
+                f"{type(e).__name__}: {str(e)}"
+            )
+
+            print("OVERPASS RESPONSE ERROR:")
+            print(error_message)
+
+            overpass_errors.append(error_message)
+
 
     if places_data is None:
+
+        print("========== ALL OVERPASS SERVERS FAILED ==========")
+
+        for error in overpass_errors:
+            print(error)
+
+        print("=================================================")
+
         raise HTTPException(
             status_code=503,
             detail=(
-                "Nearby places providers are unavailable. "
+                "Nearby places service is temporarily unavailable. "
                 "Please try again later."
             )
         )
