@@ -29,6 +29,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "https://cab-booking-platform.vercel.app",
         "https://cab-booking-platform-git-main-shruthi18.vercel.app",
+        "https://cab-booking-platform-y33o.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
